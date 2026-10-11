@@ -3,9 +3,9 @@ import requests
 import os
 
 # --- НАСТРОЙКИ ---
-BOT_TOKEN = "8827909892:AAEknp0mleSykF8_GUIovzdRXx_BhP7uS_g"  # Убедись, что тут указан твой токен
+BOT_TOKEN = "8827909892:AAEknp0mleSykF8_GUIovzdRXx_BhP7uS_g"
 USERS_FILE = "users.txt"
-THRESHOLD_PERCENT = 0.1  # Изменение цены на 0.1% для срабатывания сигнала
+THRESHOLD_PERCENT = 0.1  # Сигнал при изменении цены на 0.1%
 
 SYMBOLS = [
     "BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT",
@@ -51,7 +51,7 @@ def process_updates(offset=None):
                         send_telegram_message(
                             chat_id, 
                             "👋 <b>Добро пожаловать в Crypto Signal Bot!</b>\n\n"
-                            "Вы успешно подписаны на круглосуточные сигналы по 10 топовым криптовалютам.\n"
+                            "Вы успешно подписаны на круглосуточные сигналы по 10 криптовалютам.\n"
                             "Как только цена изменится — вы сразу получите уведомление!"
                         )
     except Exception as e:
@@ -70,19 +70,20 @@ def check_prices():
         for symbol, price in current_prices.items():
             if symbol in last_prices:
                 old_price = last_prices[symbol]
-                change = ((price - old_price) / old_price) * 100
-                
-                if abs(change) >= THRESHOLD_PERCENT:
-                    emoji = "🟢 🚀" if change > 0 else "🔴 📉"
-                    direction = "Рост" if change > 0 else "Падение"
-                    message = (
-                        f"{emoji} <b>СИГНАЛ: {symbol}</b>\n\n"
-                        f"<b>Движение:</b> {direction} на <b>{change:+.2f}%</b>\n"
-                        f"<b>Текущая цена:</b> ${price:,.4f}\n"
-                        f"<b>Предыдущая цена:</b> ${old_price:,.4f}"
-                    )
-                    for user_id in users:
-                        send_telegram_message(user_id, message)
+                if old_price > 0:  # Защита от деления на ноль
+                    change = ((price - old_price) / old_price) * 100
+                    
+                    if abs(change) >= THRESHOLD_PERCENT:
+                        emoji = "🟢 🚀" if change > 0 else "🔴 📉"
+                        direction = "Рост" if change > 0 else "Падение"
+                        message = (
+                            f"{emoji} <b>СИГНАЛ: {symbol}</b>\n\n"
+                            f"<b>Движение:</b> {direction} на <b>{change:+.2f}%</b>\n"
+                            f"<b>Текущая цена:</b> ${price:,.4f}\n"
+                            f"<b>Предыдущая цена:</b> ${old_price:,.4f}"
+                        )
+                        for user_id in users:
+                            send_telegram_message(user_id, message)
             
             last_prices[symbol] = price
     except Exception as e:
@@ -90,11 +91,6 @@ def check_prices():
 
 def main():
     print("Бот успешно запущен!")
-    # Уведомляем админа при старте
-    users = get_users()
-    for u in users:
-        send_telegram_message(u, "⚙️ <b>Система обновлена и перезапущена в облаке!</b>")
-        
     update_offset = None
     while True:
         update_offset = process_updates(update_offset)
