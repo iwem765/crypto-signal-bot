@@ -3,7 +3,7 @@ import requests
 import os
 
 # --- НАСТРОЙКИ ---
-BOT_TOKEN = "8827909892:AAEknp0mleSykF8_GUIovzdRXx_BhP7uS_g"
+BOT_TOKEN = "8827909892:AAGggK3SNqVxF82THp-hPTc8ePmgwC9kcnw"
 USERS_FILE = "users.txt"
 THRESHOLD_PERCENT = 0.1  # Сигнал при изменении цены на 0.1%
 
@@ -70,7 +70,7 @@ def check_prices():
         for symbol, price in current_prices.items():
             if symbol in last_prices:
                 old_price = last_prices[symbol]
-                if old_price > 0:  # Защита от деления на ноль
+                if old_price > 0:
                     change = ((price - old_price) / old_price) * 100
                     
                     if abs(change) >= THRESHOLD_PERCENT:
