@@ -1,87 +1,105 @@
 import time
 import requests
-import datetime
 import os
 
-TELEGRAM_TOKEN = "8827909892:AAEknpOmleSykF8_GUIovzdRXx_BhP7uS_g"
-BASE_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
-
-COINS = {
-    "Bitcoin": "BTCUSDT",
-    "Ethereum": "ETHUSDT",
-    "Solana": "SOLUSDT",
-    "Ripple (XRP)": "XRPUSDT",
-    "Cardano": "ADAUSDT",
-    "Avalanche": "AVAXUSDT",
-    "Dogecoin": "DOGEUSDT",
-    "Binance Coin": "BNBUSDT",
-    "Chainlink": "LINKUSDT",
-    "Polygon": "POLUSDT"
-}
-
-previous_prices = {}
-THRESHOLD_PERCENT = 0.005  
+# --- НАСТРОЙКИ ---
+BOT_TOKEN = "8827909892:AAEknp0mleSykF8_GUIovzdRXx_BhP7uS_g"  # Убедись, что тут указан твой токен
 USERS_FILE = "users.txt"
+THRESHOLD_PERCENT = 0.1  # Изменение цены на 0.1% для срабатывания сигнала
 
-def load_users():
+SYMBOLS = [
+    "BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT",
+    "ADAUSDT", "DOGEUSDT", "AVAXUSDT", "LINKUSDT", "DOTUSDT"
+]
+
+last_prices = {}
+
+def get_users():
     if not os.path.exists(USERS_FILE):
         return set()
-    with open(USERS_FILE, "r", encoding="utf-8") as f:
-        return set(line.strip() for line in f if line.strip().isdigit())
+    with open(USERS_FILE, "r") as f:
+        return set(line.strip() for line in f if line.strip())
 
-def send_telegram_message(chat_id, text):
-    url = f"{BASE_URL}/sendMessage"
-    payload = {"chat_id": chat_id, "text": text, "parse_mode": "Markdown"}
+def add_user(user_id):
+    users = get_users()
+    if str(user_id) not in users:
+        with open(USERS_FILE, "a") as f:
+            f.write(f"{user_id}\n")
+
+def send_telegram_message(user_id, text):
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    payload = {"chat_id": user_id, "text": text, "parse_mode": "HTML"}
     try:
-        r = requests.post(url, json=payload, timeout=10)
-        if r.status_code == 200:
-            print(f"  [✓] Успешно отправлено в Telegram для ID {chat_id}!")
-            return True
-        else:
-            print(f"  [!] Ошибка API Telegram: {r.text}")
+        requests.post(url, json=payload, timeout=5)
     except Exception as e:
-        print(f"  [ОШИБКА сети]: {e}")
-    return False
+        print(f"Ошибка отправки пользователю {user_id}: {e}")
+
+def process_updates(offset=None):
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates"
+    params = {"timeout": 5, "offset": offset}
+    try:
+        response = requests.get(url, params=params, timeout=10).json()
+        if "result" in response:
+            for update in response["result"]:
+                offset = update["update_id"] + 1
+                if "message" in update and "text" in update["message"]:
+                    chat_id = update["message"]["chat"]["id"]
+                    text = update["message"]["text"]
+                    
+                    if text == "/start":
+                        add_user(chat_id)
+                        send_telegram_message(
+                            chat_id, 
+                            "👋 <b>Добро пожаловать в Crypto Signal Bot!</b>\n\n"
+                            "Вы успешно подписаны на круглосуточные сигналы по 10 топовым криптовалютам.\n"
+                            "Как только цена изменится — вы сразу получите уведомление!"
+                        )
+    except Exception as e:
+        print(f"Ошибка получения обновлений: {e}")
+    return offset
+
+def check_prices():
+    global last_prices
+    try:
+        url = "https://api.binance.com/api/v3/ticker/price"
+        response = requests.get(url, timeout=5).json()
+        current_prices = {item["symbol"]: float(item["price"]) for item in response if item["symbol"] in SYMBOLS}
+        
+        users = get_users()
+        
+        for symbol, price in current_prices.items():
+            if symbol in last_prices:
+                old_price = last_prices[symbol]
+                change = ((price - old_price) / old_price) * 100
+                
+                if abs(change) >= THRESHOLD_PERCENT:
+                    emoji = "🟢 🚀" if change > 0 else "🔴 📉"
+                    direction = "Рост" if change > 0 else "Падение"
+                    message = (
+                        f"{emoji} <b>СИГНАЛ: {symbol}</b>\n\n"
+                        f"<b>Движение:</b> {direction} на <b>{change:+.2f}%</b>\n"
+                        f"<b>Текущая цена:</b> ${price:,.4f}\n"
+                        f"<b>Предыдущая цена:</b> ${old_price:,.4f}"
+                    )
+                    for user_id in users:
+                        send_telegram_message(user_id, message)
+            
+            last_prices[symbol] = price
+    except Exception as e:
+        print(f"Ошибка проверки цен: {e}")
 
 def main():
-    print("=== ОБЛАЧНЫЙ ТОРГОВЫЙ БОТ ЗАПУЩЕН ===")
-    
-    users = load_users()
-    print(f"[ИНФО]: Загружено клиентов из users.txt: {len(users)}")
-    for uid in users:
-        send_telegram_message(uid, "🔔 *Облачный узел активен! Бот круглосуточно мониторит рынок.*")
-
-    global previous_prices
+    print("Бот успешно запущен!")
+    # Уведомляем админа при старте
+    users = get_users()
+    for u in users:
+        send_telegram_message(u, "⚙️ <b>Система обновлена и перезапущена в облаке!</b>")
+        
+    update_offset = None
     while True:
-        try:
-            now = datetime.datetime.now().strftime("%H:%M:%S")
-            print(f"\n[{now}] Анализ 10 монет...")
-            
-            for name, symbol in COINS.items():
-                url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}"
-                response = requests.get(url, timeout=4)
-                data = response.json()
-                price = float(data.get('price', 0))
-                
-                if name in previous_prices:
-                    old_price = previous_prices[name]
-                    change = ((price - old_price) / old_price) * 100
-                    
-                    if abs(change) >= THRESHOLD_PERCENT:
-                        direction = "🚀 ВВЕРХ" if change > 0 else "🔻 ВНИЗ"
-                        msg = f"⚡ *СИГНАЛ РЫНКА* [{now}]\n\nАктив: *{name}*\nЦена: *${price:,.2f}*\nДвижение: *{direction} ({change:+.3f}%)*"
-                        print(f"  [➔ СИГНАЛ]: {name} {change:+.3f}% -> Отправка")
-                        
-                        current_users = load_users()
-                        for uid in current_users:
-                            send_telegram_message(uid, msg)
-                
-                previous_prices[name] = price
-                
-        except Exception as e:
-            print(f"[ОШИБКА цикла]: {e}")
-            
-        time.sleep(8)
+        update_offset = process_updates(update_offset)
+        check_prices()
+        time.sleep(3)
 
 if __name__ == "__main__":
     main()
