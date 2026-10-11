@@ -3,7 +3,7 @@ import requests
 import os
 
 # --- НАСТРОЙКИ ---
-BOT_TOKEN = "8827909892:AAEknp0mleSykF8_GUIovzdRXx_BhP7uS_g"
+BOT_TOKEN = "8827909892:AAGggK3SNqVxF82THp-hPTc8ePmgwC9kcnw"
 USERS_FILE = "users.txt"
 THRESHOLD_PERCENT = 0.1  # Сигнал при изменении цены на 0.1%
 
